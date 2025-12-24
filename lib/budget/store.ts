@@ -1,5 +1,3 @@
-"use client"
-
 import { create } from "zustand"
 import type { Account, Category, Operation, BudgetEnvelope, AutomationRule, Scenario, OperationFilters } from "./types"
 import {

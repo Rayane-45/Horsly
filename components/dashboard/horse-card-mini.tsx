@@ -5,7 +5,7 @@ import Image from "next/image"
 import Link from "next/link"
 
 interface HorseCardMiniProps {
-  id: number
+  id: string | number
   name: string
   image?: string
   breed?: string
@@ -40,8 +40,8 @@ export function HorseCardMini({ id, name, image, breed, age, healthStatus, hasOv
   const StatusIcon = config.icon
 
   return (
-    <Link href={`/horses/${id}`}>
-      <Card className="p-4 bg-card border border-border hover:border-primary/30 transition-colors cursor-pointer">
+    <Link href={`/horses/${id}`} className="block">
+      <Card className="p-4 bg-card border border-border hover:border-primary/30 transition-colors cursor-pointer min-h-[112px]">
         <div className="flex gap-4">
           <div className="relative h-20 w-20 rounded-xl overflow-hidden flex-shrink-0 bg-muted">
             <Image

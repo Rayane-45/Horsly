@@ -31,8 +31,8 @@ export function TrainingItemMini({ id, horseName, type, duration, distance, date
 
   return (
     <Link href={`/training?session=${id}`}>
-      <Card className="p-4 bg-card border border-border hover:border-primary/30 transition-colors cursor-pointer">
-        <div className="flex items-center justify-between gap-3">
+      <Card className="p-4 bg-card border border-border hover:border-primary/30 transition-colors cursor-pointer min-h-[100px] flex items-center">
+        <div className="flex items-center justify-between gap-3 w-full">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-2">
               <h4 className="text-sm font-semibold text-foreground truncate">{horseName}</h4>

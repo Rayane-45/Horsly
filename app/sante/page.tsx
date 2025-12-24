@@ -1,55 +1,88 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Badge } from "@/components/ui/badge"
-import { useHealthStore } from "@/lib/health/store"
-import { calculateHealthDashboard } from "@/lib/health/calculations"
-import { generateRecommendations } from "@/lib/health/smart-assistant"
-import { HealthEventForm } from "@/components/health/health-event-form"
-import { HealthTimeline } from "@/components/health/health-timeline"
-import { VitalSignsForm } from "@/components/health/vital-signs-form"
-import { VitalsCharts } from "@/components/health/vitals-charts"
-import { ObservationsJournal } from "@/components/health/observations-journal"
-import { RecommendationsCards } from "@/components/health/recommendations-cards"
+import { useHealthEvents, HealthEvent } from "@/hooks/use-health-events"
+import { useHorses } from "@/hooks/use-horses"
+import { AddMedicalRecordDialog } from "@/components/add-medical-record-dialog"
 import { AppLayout } from "@/components/layout/app-layout"
-import { ShareHealthRecord } from "@/components/health/share-health-record"
+import { Skeleton } from "@/components/ui/skeleton"
+import { HorseSelector } from "@/components/horse-selector"
 import {
   Plus,
   Activity,
   Calendar,
   FileText,
-  Lightbulb,
   AlertCircle,
   CheckCircle2,
   TrendingUp,
-  Thermometer,
+  Loader2,
+  Stethoscope,
+  Syringe,
 } from "lucide-react"
 
 export default function SantePage() {
-  const { events, vaccinations, dewormings, vitalSigns, observations } = useHealthStore()
-  const [eventFormOpen, setEventFormOpen] = useState(false)
-  const [vitalsFormOpen, setVitalsFormOpen] = useState(false)
+  const { events, loading, error, deleteEvent, refetch } = useHealthEvents()
+  const { horses, loading: horsesLoading } = useHorses()
+  const [selectedHorseId, setSelectedHorseId] = useState<string>("all")
 
-  // Mock horse ID - in real app, this would come from route params or context
-  const horseId = "horse-1"
-  const horseProfile = "ADULT" // This would come from horse data
+  // Filter events by selected horse
+  const filteredEvents = useMemo(() => {
+    if (selectedHorseId === "all") return events
+    return events.filter((e) => e.horse_id === selectedHorseId)
+  }, [events, selectedHorseId])
 
-  // Calculate dashboard data
-  const dashboard = calculateHealthDashboard(events, vaccinations, dewormings, vitalSigns, horseId)
+  // Calculate dashboard stats
+  const dashboard = useMemo(() => {
+    const now = new Date()
+    const vaccinations = filteredEvents.filter((e) => e.event_type === "vaccine")
+    const dewormings = filteredEvents.filter((e) => e.event_type === "deworming")
+    const vetVisits = filteredEvents.filter((e) => e.event_type === "vet")
 
-  // Generate AI recommendations
-  const aiRecommendations = generateRecommendations({
-    id: horseId,
-    profile: horseProfile,
-    age: 8,
-    events,
-    vaccinations,
-    dewormings,
-    vitalSigns,
-  })
+    // Check for overdue vaccinations (> 1 year since last)
+    const lastVaccine = vaccinations.sort(
+      (a, b) => new Date(b.event_date).getTime() - new Date(a.event_date).getTime()
+    )[0]
+    const vaccineOverdue = lastVaccine
+      ? new Date(lastVaccine.event_date).getTime() < now.getTime() - 365 * 24 * 60 * 60 * 1000
+      : false
+
+    // Check for overdue deworming (> 3 months since last)
+    const lastDeworming = dewormings.sort(
+      (a, b) => new Date(b.event_date).getTime() - new Date(a.event_date).getTime()
+    )[0]
+    const dewormOverdue = lastDeworming
+      ? new Date(lastDeworming.event_date).getTime() < now.getTime() - 90 * 24 * 60 * 60 * 1000
+      : false
+
+    // Upcoming events (with next_due_date in next 30 days)
+    const upcomingEvents = filteredEvents.filter((e) => {
+      if (!e.next_due_date) return false
+      const dueDate = new Date(e.next_due_date)
+      const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
+      return dueDate >= now && dueDate <= in30Days
+    })
+
+    // Total cost this year
+    const thisYearCost = filteredEvents
+      .filter((e) => new Date(e.event_date).getFullYear() === now.getFullYear())
+      .reduce((sum, e) => sum + (e.cost || 0), 0)
+
+    return {
+      vaccineCount: vaccinations.length,
+      vaccineStatus: vaccinations.length === 0 ? "WARNING" : vaccineOverdue ? "OVERDUE" : "OK",
+      dewormCount: dewormings.length,
+      dewormStatus: dewormings.length === 0 ? "WARNING" : dewormOverdue ? "OVERDUE" : "OK",
+      vetVisitCount: vetVisits.length,
+      totalEvents: filteredEvents.length,
+      upcomingEvents,
+      thisYearCost,
+      overdueCount: (vaccineOverdue ? 1 : 0) + (dewormOverdue ? 1 : 0),
+    }
+  }, [filteredEvents])
 
   const getStatusBadge = (status: "OK" | "WARNING" | "OVERDUE") => {
     switch (status) {
@@ -63,7 +96,7 @@ export default function SantePage() {
         return (
           <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">
             <AlertCircle className="h-3 w-3 mr-1" />
-            Attention
+            À faire
           </Badge>
         )
       case "OVERDUE":
@@ -76,80 +109,129 @@ export default function SantePage() {
     }
   }
 
+  const getEventTypeLabel = (type: string) => {
+    const labels: Record<string, string> = {
+      vet: "Vétérinaire",
+      farrier: "Maréchal-ferrant",
+      vaccine: "Vaccination",
+      deworming: "Vermifuge",
+      dental: "Dentiste",
+      injury: "Blessure",
+      illness: "Maladie",
+      other: "Autre",
+    }
+    return labels[type] || type
+  }
+
+  const getEventTypeIcon = (type: string) => {
+    switch (type) {
+      case "vaccine":
+        return <Syringe className="h-4 w-4" />
+      case "vet":
+        return <Stethoscope className="h-4 w-4" />
+      default:
+        return <Activity className="h-4 w-4" />
+    }
+  }
+
+  const getEventTypeColor = (type: string) => {
+    const colors: Record<string, string> = {
+      vet: "bg-blue-100 text-blue-800",
+      farrier: "bg-orange-100 text-orange-800",
+      vaccine: "bg-green-100 text-green-800",
+      deworming: "bg-purple-100 text-purple-800",
+      dental: "bg-cyan-100 text-cyan-800",
+      injury: "bg-red-100 text-red-800",
+      illness: "bg-pink-100 text-pink-800",
+      other: "bg-gray-100 text-gray-800",
+    }
+    return colors[type] || "bg-gray-100 text-gray-800"
+  }
+
+  const handleDeleteEvent = async (id: string) => {
+    if (confirm("Êtes-vous sûr de vouloir supprimer cet événement de santé ?")) {
+      try {
+        await deleteEvent(id)
+      } catch (err) {
+        console.error("Erreur lors de la suppression:", err)
+      }
+    }
+  }
+
   return (
     <AppLayout pageTitle="Santé" pageSubtitle="Suivi médical et recommandations personnalisées">
       <div className="space-y-6">
-        {/* Action Buttons */}
-        <div className="flex gap-2 justify-end">
-          <ShareHealthRecord horseId={horseId} />
-          <Button onClick={() => setVitalsFormOpen(true)} variant="outline">
-            <Activity className="h-4 w-4 mr-2" />
-            Constantes
-          </Button>
-          <Button onClick={() => setEventFormOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Nouveau soin
-          </Button>
+        {/* Horse Selector */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <HorseSelector
+            value={selectedHorseId}
+            onValueChange={setSelectedHorseId}
+            showAllOption={true}
+            label="Cheval"
+          />
+          <AddMedicalRecordDialog onSuccess={refetch} />
         </div>
 
         {/* Dashboard KPIs */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-          <Card className="p-4 bg-card border border-border">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <Activity className="h-4 w-4" />
-              <span className="text-xs font-medium">Vaccins</span>
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 sm:gap-3">
+          <Card className="p-3 sm:p-4 bg-card border border-border aspect-square sm:aspect-auto flex flex-col justify-center">
+            <div className="flex items-center gap-1.5 sm:gap-2 text-muted-foreground mb-1.5 sm:mb-2">
+              <Syringe className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <span className="text-[10px] sm:text-xs font-medium">Vaccins</span>
             </div>
-            <p className="text-2xl font-semibold text-foreground">
-              {vaccinations.filter((v) => v.horseId === horseId).length}
-            </p>
-            <div className="mt-1">{getStatusBadge(dashboard.vaccineStatus)}</div>
+            {loading ? (
+              <Skeleton className="h-8 w-20" />
+            ) : (
+              <>
+                <p className="text-xl sm:text-2xl font-semibold text-foreground">{dashboard.vaccineCount}</p>
+                <div className="mt-1">{getStatusBadge(dashboard.vaccineStatus as any)}</div>
+              </>
+            )}
           </Card>
 
-          <Card className="p-4 bg-card border border-border">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <AlertCircle className="h-4 w-4" />
-              <span className="text-xs font-medium">Vermifuges</span>
+          <Card className="p-3 sm:p-4 bg-card border border-border aspect-square sm:aspect-auto flex flex-col justify-center">
+            <div className="flex items-center gap-1.5 sm:gap-2 text-muted-foreground mb-1.5 sm:mb-2">
+              <Activity className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <span className="text-[10px] sm:text-xs font-medium">Vermifuges</span>
             </div>
-            <p className="text-2xl font-semibold text-foreground">
-              {dewormings.filter((d) => d.horseId === horseId).length}
-            </p>
-            <div className="mt-1">{getStatusBadge(dashboard.dewormStatus)}</div>
+            {loading ? (
+              <Skeleton className="h-8 w-20" />
+            ) : (
+              <>
+                <p className="text-xl sm:text-2xl font-semibold text-foreground">{dashboard.dewormCount}</p>
+                <div className="mt-1">{getStatusBadge(dashboard.dewormStatus as any)}</div>
+              </>
+            )}
           </Card>
 
-          <Card className="p-4 bg-card border border-border">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <TrendingUp className="h-4 w-4" />
-              <span className="text-xs font-medium">Poids actuel</span>
+          <Card className="p-3 sm:p-4 bg-card border border-border aspect-square sm:aspect-auto flex flex-col justify-center">
+            <div className="flex items-center gap-1.5 sm:gap-2 text-muted-foreground mb-1.5 sm:mb-2">
+              <Stethoscope className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <span className="text-[10px] sm:text-xs font-medium">Visites véto</span>
             </div>
-            <p className="text-2xl font-semibold text-foreground">
-              {dashboard.recentVitals?.weightKg ? `${dashboard.recentVitals.weightKg} kg` : "N/A"}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              {dashboard.recentVitals?.bcs ? `BCS: ${dashboard.recentVitals.bcs}/9` : "Non mesuré"}
-            </p>
+            {loading ? (
+              <Skeleton className="h-8 w-20" />
+            ) : (
+              <>
+                <p className="text-xl sm:text-2xl font-semibold text-foreground">{dashboard.vetVisitCount}</p>
+                <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">Total enregistré</p>
+              </>
+            )}
           </Card>
 
-          <Card className="p-4 bg-card border border-border">
-            <div className="flex items-center gap-2 text-muted-foreground mb-2">
-              <Thermometer className="h-4 w-4" />
-              <span className="text-xs font-medium">Température</span>
+          <Card className="p-3 sm:p-4 bg-card border border-border aspect-square sm:aspect-auto flex flex-col justify-center">
+            <div className="flex items-center gap-1.5 sm:gap-2 text-muted-foreground mb-1.5 sm:mb-2">
+              <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              <span className="text-[10px] sm:text-xs font-medium">Coût annuel</span>
             </div>
-            <p className="text-2xl font-semibold text-foreground">
-              {dashboard.recentVitals?.temperatureC ? `${dashboard.recentVitals.temperatureC}°C` : "N/A"}
-            </p>
-            <p
-              className={`text-xs mt-1 ${
-                dashboard.recentVitals?.temperatureC && dashboard.recentVitals.temperatureC > 38.5
-                  ? "text-destructive"
-                  : "text-muted-foreground"
-              }`}
-            >
-              {dashboard.recentVitals?.temperatureC
-                ? dashboard.recentVitals.temperatureC > 38.5
-                  ? "Élevée"
-                  : "Normale"
-                : "Non mesurée"}
-            </p>
+            {loading ? (
+              <Skeleton className="h-8 w-20" />
+            ) : (
+              <>
+                <p className="text-xl sm:text-2xl font-semibold text-foreground">{dashboard.thisYearCost.toFixed(0)}€</p>
+                <p className="text-[10px] sm:text-xs text-muted-foreground mt-1">{new Date().getFullYear()}</p>
+              </>
+            )}
           </Card>
         </div>
 
@@ -163,7 +245,7 @@ export default function SantePage() {
                   <p className="font-semibold text-red-900">
                     {dashboard.overdueCount} soin{dashboard.overdueCount > 1 ? "s" : ""} en retard
                   </p>
-                  <p className="text-sm text-red-700">Consultez la timeline pour planifier les soins manquants</p>
+                  <p className="text-sm text-red-700">Consultez les soins pour planifier les rappels manquants</p>
                 </div>
               </div>
             </CardContent>
@@ -171,180 +253,172 @@ export default function SantePage() {
         )}
 
         {/* Main Content Tabs */}
-        <Tabs defaultValue="overview" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2 lg:grid-cols-5">
-            <TabsTrigger value="overview">
-              <Activity className="h-4 w-4 mr-2" />
-              <span className="hidden sm:inline">Vue d'ensemble</span>
-              <span className="sm:hidden">Vue</span>
-            </TabsTrigger>
+        <Tabs defaultValue="timeline" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="timeline">
               <Calendar className="h-4 w-4 mr-2" />
-              <span className="hidden sm:inline">Timeline</span>
-              <span className="sm:hidden">Soins</span>
+              Historique
             </TabsTrigger>
-            <TabsTrigger value="vitals">
-              <TrendingUp className="h-4 w-4 mr-2" />
-              <span className="hidden sm:inline">Constantes</span>
-              <span className="sm:hidden">Stats</span>
-            </TabsTrigger>
-            <TabsTrigger value="observations">
+            <TabsTrigger value="upcoming">
               <FileText className="h-4 w-4 mr-2" />
-              <span className="hidden sm:inline">Journal</span>
-              <span className="sm:hidden">Notes</span>
-            </TabsTrigger>
-            <TabsTrigger value="recommendations">
-              <Lightbulb className="h-4 w-4 mr-2" />
-              <span className="hidden sm:inline">Recommandations IA</span>
-              <span className="sm:hidden">IA</span>
-              {aiRecommendations.length > 0 && (
-                <Badge className="ml-2 h-5 w-5 rounded-full p-0 flex items-center justify-center bg-primary text-primary-foreground">
-                  {aiRecommendations.length}
-                </Badge>
-              )}
+              À venir
             </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="overview" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Prochains soins (30 jours)</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {dashboard.upcomingEvents.length > 0 ? (
-                    <div className="space-y-3">
-                      {dashboard.upcomingEvents.map((event) => (
-                        <div key={event.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                          <div>
-                            <p className="font-medium text-foreground">{event.label}</p>
-                            <p className="text-sm text-muted-foreground">
-                              {event.plannedDate &&
-                                new Date(event.plannedDate).toLocaleDateString("fr-FR", {
-                                  day: "numeric",
-                                  month: "long",
-                                })}
-                            </p>
-                          </div>
-                          <Badge>{event.category}</Badge>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground text-center py-8">
-                      Aucun soin prévu dans les 30 prochains jours
-                    </p>
-                  )}
-                </CardContent>
+          <TabsContent value="timeline" className="space-y-4">
+            {loading ? (
+              <div className="flex items-center justify-center p-8">
+                <Loader2 className="h-6 w-6 animate-spin mr-2" />
+                <span>Chargement des événements...</span>
+              </div>
+            ) : filteredEvents.length === 0 ? (
+              <Card className="p-8 text-center text-muted-foreground">
+                <Stethoscope className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                <p className="text-lg font-medium">Aucun événement de santé enregistré</p>
+                <p className="text-sm mt-1">
+                  Commencez par ajouter une visite vétérinaire, une vaccination ou un vermifuge
+                </p>
+                <div className="mt-4">
+                  <AddMedicalRecordDialog onSuccess={refetch} />
+                </div>
               </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Observations récentes</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  {observations.filter((o) => o.horseId === horseId).length > 0 ? (
-                    <div className="space-y-3">
-                      {observations
-                        .filter((o) => o.horseId === horseId)
-                        .slice(0, 3)
-                        .map((obs) => (
-                          <div key={obs.id} className="p-3 bg-muted rounded-lg">
-                            <p className="text-sm text-foreground">{obs.text}</p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {new Date(obs.date).toLocaleDateString("fr-FR", {
-                                day: "numeric",
-                                month: "long",
-                                hour: "2-digit",
-                                minute: "2-digit",
-                              })}
-                            </p>
+            ) : (
+              <div className="space-y-3">
+                {filteredEvents
+                  .sort((a, b) => new Date(b.event_date).getTime() - new Date(a.event_date).getTime())
+                  .map((event) => (
+                    <Card key={event.id} className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            {getEventTypeIcon(event.event_type)}
+                            <h3 className="font-medium">{event.title}</h3>
+                            <Badge className={getEventTypeColor(event.event_type)}>
+                              {getEventTypeLabel(event.event_type)}
+                            </Badge>
                           </div>
-                        ))}
-                    </div>
-                  ) : (
-                    <p className="text-muted-foreground text-center py-8">Aucune observation récente</p>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            <VitalsCharts horseId={horseId} />
-          </TabsContent>
-
-          <TabsContent value="timeline">
-            <HealthTimeline horseId={horseId} />
-          </TabsContent>
-
-          <TabsContent value="vitals">
-            <VitalsCharts horseId={horseId} />
-            <div className="mt-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Historique des constantes</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-3">
-                    {vitalSigns
-                      .filter((v) => v.horseId === horseId)
-                      .sort((a, b) => b.date.localeCompare(a.date))
-                      .slice(0, 10)
-                      .map((vital) => (
-                        <div key={vital.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                          <div>
-                            <p className="text-sm font-medium text-foreground">
-                              {new Date(vital.date).toLocaleDateString("fr-FR", {
+                          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+                            <div className="flex items-center gap-1">
+                              <Calendar className="h-4 w-4" />
+                              {new Date(event.event_date).toLocaleDateString("fr-FR", {
                                 day: "numeric",
                                 month: "long",
                                 year: "numeric",
                               })}
+                            </div>
+                            <span>•</span>
+                            <span>{event.horses?.name || "Cheval inconnu"}</span>
+                            {event.cost && (
+                              <>
+                                <span>•</span>
+                                <span className="font-medium">{event.cost}€</span>
+                              </>
+                            )}
+                          </div>
+                          {event.description && (
+                            <p className="text-sm text-muted-foreground mt-2">{event.description}</p>
+                          )}
+                          {event.veterinarian_name && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Praticien : {event.veterinarian_name}
                             </p>
-                            {vital.notes && <p className="text-xs text-muted-foreground mt-1">{vital.notes}</p>}
-                          </div>
-                          <div className="flex gap-4 text-sm">
-                            {vital.weightKg && <span className="text-foreground">{vital.weightKg} kg</span>}
-                            {vital.temperatureC && <span className="text-foreground">{vital.temperatureC}°C</span>}
-                            {vital.bcs && <span className="text-muted-foreground">BCS: {vital.bcs}</span>}
-                          </div>
+                          )}
+                          {event.next_due_date && (
+                            <p className="text-xs text-primary mt-1">
+                              Prochain rappel :{" "}
+                              {new Date(event.next_due_date).toLocaleDateString("fr-FR")}
+                            </p>
+                          )}
                         </div>
-                      ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleDeleteEvent(event.id)}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          Supprimer
+                        </Button>
+                      </div>
+                    </Card>
+                  ))}
+              </div>
+            )}
           </TabsContent>
 
-          <TabsContent value="observations">
-            <ObservationsJournal horseId={horseId} />
-          </TabsContent>
-
-          <TabsContent value="recommendations">
-            <div className="mb-6">
-              <Card className="bg-primary/5 border-primary/20">
-                <CardContent className="pt-6">
-                  <div className="flex items-start gap-3">
-                    <Lightbulb className="h-5 w-5 text-primary mt-0.5" />
-                    <div>
-                      <p className="font-semibold text-foreground">Assistant IA de santé équine</p>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        Ces recommandations sont générées automatiquement en fonction du profil de votre cheval, de la
-                        saison, de son historique médical et de ses constantes vitales. Elles vous aident à anticiper
-                        les soins et à maintenir votre cheval en pleine santé.
-                      </p>
-                    </div>
+          <TabsContent value="upcoming" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Prochains soins (30 jours)</CardTitle>
+              </CardHeader>
+              <CardContent>
+                {dashboard.upcomingEvents.length > 0 ? (
+                  <div className="space-y-3">
+                    {dashboard.upcomingEvents.map((event) => (
+                      <div key={event.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                        <div>
+                          <p className="font-medium text-foreground">{event.title}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {event.horses?.name} -{" "}
+                            {event.next_due_date &&
+                              new Date(event.next_due_date).toLocaleDateString("fr-FR", {
+                                day: "numeric",
+                                month: "long",
+                              })}
+                          </p>
+                        </div>
+                        <Badge className={getEventTypeColor(event.event_type)}>
+                          {getEventTypeLabel(event.event_type)}
+                        </Badge>
+                      </div>
+                    ))}
                   </div>
-                </CardContent>
-              </Card>
-            </div>
+                ) : (
+                  <p className="text-muted-foreground text-center py-8">
+                    Aucun soin prévu dans les 30 prochains jours
+                  </p>
+                )}
+              </CardContent>
+            </Card>
 
-            <RecommendationsCards horseId={horseId} />
+            {/* Recommendations */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Recommandations</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {dashboard.vaccineStatus !== "OK" && (
+                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p className="font-medium text-yellow-900">Vaccination</p>
+                    <p className="text-sm text-yellow-700">
+                      {dashboard.vaccineCount === 0
+                        ? "Aucune vaccination enregistrée. Pensez à vacciner vos chevaux."
+                        : "Une vaccination pourrait être due. Vérifiez les dates de rappel."}
+                    </p>
+                  </div>
+                )}
+                {dashboard.dewormStatus !== "OK" && (
+                  <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <p className="font-medium text-yellow-900">Vermifuge</p>
+                    <p className="text-sm text-yellow-700">
+                      {dashboard.dewormCount === 0
+                        ? "Aucun vermifuge enregistré. Un programme de vermifugation régulier est recommandé."
+                        : "Un vermifuge pourrait être nécessaire (dernier > 3 mois)."}
+                    </p>
+                  </div>
+                )}
+                {dashboard.vaccineStatus === "OK" && dashboard.dewormStatus === "OK" && (
+                  <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="font-medium text-green-900">Tout est à jour !</p>
+                    <p className="text-sm text-green-700">
+                      Les vaccinations et vermifuges sont à jour. Continuez ainsi !
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
         </Tabs>
       </div>
-
-      {/* Forms */}
-      <HealthEventForm open={eventFormOpen} onOpenChange={setEventFormOpen} horseId={horseId} />
-      <VitalSignsForm open={vitalsFormOpen} onOpenChange={setVitalsFormOpen} horseId={horseId} />
     </AppLayout>
   )
 }

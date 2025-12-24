@@ -1,8 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { rulesEngine } from "@/lib/ai/rules-engine"
-import { useTrainingStore } from "@/lib/training/store"
-import { useHealthStore } from "@/lib/health/store"
-import { useBudgetStore } from "@/lib/budget/store"
+import { mockSessions } from "@/lib/training/mock-data"
+import { mockHealthEvents } from "@/lib/health/mock-data"
+import { mockOperations } from "@/lib/budget/mock-data"
 import type { ActionCard } from "@/lib/ai/types"
 
 export async function POST(request: NextRequest) {
@@ -12,10 +12,10 @@ export async function POST(request: NextRequest) {
 
     const cards: ActionCard[] = []
 
-    // Get data from stores (in real app, fetch from DB)
-    const trainingSessions = useTrainingStore.getState().sessions
-    const healthEvents = useHealthStore.getState().events
-    const budgetOps = useBudgetStore.getState().operations
+    // Use mock data directly on the server (in real app, fetch from DB)
+    const trainingSessions = mockSessions
+    const healthEvents = mockHealthEvents
+    const budgetOps = mockOperations
 
     // Mock weather (in real app, fetch from API)
     const weather = {

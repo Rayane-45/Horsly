@@ -19,7 +19,7 @@ interface DashboardSectionProps {
 
 export function DashboardSection({ title, action, children, emptyState, isEmpty }: DashboardSectionProps) {
   return (
-    <section className="space-y-4">
+    <section className="space-y-3 sm:space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">{title}</h2>
         {action && (
@@ -39,7 +39,7 @@ export function DashboardSection({ title, action, children, emptyState, isEmpty 
           </Link>
         </div>
       ) : (
-        <div className="space-y-3">{children}</div>
+        <div className="space-y-4">{children}</div>
       )}
     </section>
   )

@@ -6,6 +6,10 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  transpilePackages: ['recharts'],
+  experimental: {
+    optimizePackageImports: ['recharts'],
+  },
 }
 
 export default nextConfig

@@ -4,6 +4,10 @@ import { Plus_Jakarta_Sans } from "next/font/google"
 import { GeistMono } from "geist/font/mono"
 import { Analytics } from "@vercel/analytics/next"
 import { Suspense } from "react"
+import { AuthProvider } from "@/components/auth/auth-provider"
+import { ExpensesProvider } from "@/contexts/expenses-context"
+import { ProfileProvider } from "@/contexts/profile-context"
+import { Toaster } from "@/components/ui/toaster"
 import "./globals.css"
 
 const jakarta = Plus_Jakarta_Sans({
@@ -26,7 +30,14 @@ export default function RootLayout({
   return (
     <html lang="fr">
       <body className={`font-sans ${jakarta.variable} ${GeistMono.variable} antialiased`}>
-        <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
+        <AuthProvider>
+          <ProfileProvider>
+            <ExpensesProvider>
+              <Suspense fallback={<div>Loading...</div>}>{children}</Suspense>
+              <Toaster />
+            </ExpensesProvider>
+          </ProfileProvider>
+        </AuthProvider>
         <Analytics />
       </body>
     </html>

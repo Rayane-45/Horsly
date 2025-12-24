@@ -1,0 +1,71 @@
+-- Script pour créer le compte administrateur par défaut
+-- À exécuter dans le SQL Editor de Supabase après avoir configuré la base de données
+
+-- 1. Créer l'utilisateur admin dans auth.users
+-- NOTE: Ce script doit être adapté selon votre configuration Supabase
+-- L'option recommandée est de créer l'utilisateur via l'interface Supabase Auth
+-- ou via l'API Supabase Admin
+
+-- Pour créer l'utilisateur admin via l'interface:
+-- 1. Aller dans Authentication > Users
+-- 2. Cliquer sur "Add user"
+-- 3. Email: admin@cavaly.app
+-- 4. Password: admin
+-- 5. Confirmer l'email automatiquement
+
+-- Une fois l'utilisateur créé, exécuter cette requête pour le marquer comme admin:
+-- Remplacer 'ADMIN_USER_ID' par l'ID réel de l'utilisateur créé
+
+-- UPDATE profiles 
+-- SET is_admin = true 
+-- WHERE email = 'admin@cavaly.app';
+
+-- Alternative: Script SQL complet (nécessite des permissions élevées)
+-- DO $$
+-- DECLARE
+--   admin_user_id UUID;
+-- BEGIN
+--   -- Insérer dans auth.users (nécessite des permissions spéciales)
+--   INSERT INTO auth.users (
+--     instance_id,
+--     id,
+--     aud,
+--     role,
+--     email,
+--     encrypted_password,
+--     email_confirmed_at,
+--     raw_app_meta_data,
+--     raw_user_meta_data,
+--     created_at,
+--     updated_at,
+--     confirmation_token,
+--     email_change,
+--     email_change_token_new,
+--     recovery_token
+--   ) VALUES (
+--     '00000000-0000-0000-0000-000000000000',
+--     gen_random_uuid(),
+--     'authenticated',
+--     'authenticated',
+--     'admin@cavaly.app',
+--     crypt('admin', gen_salt('bf')),
+--     NOW(),
+--     '{"provider":"email","providers":["email"]}',
+--     '{"full_name":"Administrateur"}',
+--     NOW(),
+--     NOW(),
+--     '',
+--     '',
+--     '',
+--     ''
+--   )
+--   RETURNING id INTO admin_user_id;
+--
+--   -- Mettre à jour le profil pour marquer comme admin
+--   UPDATE profiles 
+--   SET is_admin = true 
+--   WHERE id = admin_user_id;
+-- END $$;
+
+-- IMPORTANT: Pour des raisons de sécurité, changez le mot de passe admin
+-- après la première connexion via l'interface utilisateur

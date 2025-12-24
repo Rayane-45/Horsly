@@ -21,7 +21,8 @@ export function EventCardMini({ id, type, horseName, date, title }: EventCardMin
     other: { label: "Autre", icon: Calendar, color: "text-gray-600", bgColor: "bg-gray-500/10" },
   }
 
-  const config = typeConfig[type]
+  // Utiliser 'other' par défaut si le type n'est pas reconnu
+  const config = typeConfig[type] || typeConfig.other
   const Icon = config.icon
 
   const now = new Date()
@@ -41,8 +42,8 @@ export function EventCardMini({ id, type, horseName, date, title }: EventCardMin
 
   return (
     <Link href={`/sante?event=${id}`}>
-      <Card className="p-4 bg-card border border-border hover:border-primary/30 transition-colors cursor-pointer">
-        <div className="flex items-center gap-3">
+      <Card className="p-4 bg-card border border-border hover:border-primary/30 transition-colors cursor-pointer min-h-[88px] flex items-center">
+        <div className="flex items-center gap-3 w-full">
           <div className={`h-10 w-10 rounded-full ${config.bgColor} flex items-center justify-center flex-shrink-0`}>
             <Icon className={`h-5 w-5 ${config.color}`} />
           </div>

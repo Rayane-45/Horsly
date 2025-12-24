@@ -3,9 +3,10 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Calendar, DollarSign, Activity, ChevronLeft, ChevronRight, Home as Horse } from "lucide-react"
+import { Home, Calendar, DollarSign, Activity, ChevronLeft, ChevronRight, Home as Horse, LogIn, Shield, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Image from "next/image"
+import { useAuth } from "@/components/auth/auth-provider"
 
 const navItems = [
   { name: "Accueil", href: "/", icon: Home },
@@ -18,14 +19,30 @@ const navItems = [
 export function AppSidebar() {
   const pathname = usePathname()
   const [isCollapsed, setIsCollapsed] = useState(false)
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  const { user } = useAuth()
 
   // Load collapsed state from localStorage on mount
   useEffect(() => {
+    setMounted(true)
     const saved = localStorage.getItem("sidebar:collapsed")
     if (saved !== null) {
       setIsCollapsed(saved === "true")
     }
   }, [])
+
+  // Check admin status
+  useEffect(() => {
+    if (user) {
+      fetch("/api/admin/check")
+        .then((res) => res.json())
+        .then((data) => setIsAdmin(data.isAdmin))
+        .catch(() => setIsAdmin(false))
+    } else {
+      setIsAdmin(false)
+    }
+  }, [user])
 
   // Save collapsed state to localStorage
   const toggleCollapsed = () => {
@@ -72,6 +89,52 @@ export function AppSidebar() {
               </Link>
             )
           })}
+
+          {/* Divider */}
+          <div className="border-t border-sidebar-border my-2"></div>
+
+          {/* Profile Link - affiché uniquement après montage pour éviter l'hydratation */}
+          {mounted && user && (
+            <Link
+              href="/profile"
+              className={`flex items-center gap-3 px-3 py-3 rounded-xl transition-all min-h-[44px] ${
+                pathname === "/profile"
+                  ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                  : "text-sidebar-foreground hover:bg-sidebar-accent/10"
+              }`}
+            >
+              <User className="h-5 w-5 flex-shrink-0" />
+              {!isCollapsed && <span className="font-medium text-sm">Mon profil</span>}
+            </Link>
+          )}
+
+          {/* Connexion Link */}
+          <Link
+            href="/connexion"
+            className={`flex items-center gap-3 px-3 py-3 rounded-xl transition-all min-h-[44px] ${
+              pathname === "/connexion"
+                ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                : "text-sidebar-foreground hover:bg-sidebar-accent/10"
+            }`}
+          >
+            <LogIn className="h-5 w-5 flex-shrink-0" />
+            {!isCollapsed && <span className="font-medium text-sm">Connexion</span>}
+          </Link>
+
+          {/* Admin Link (only for admins) - affiché uniquement après montage */}
+          {mounted && isAdmin && (
+            <Link
+              href="/admin"
+              className={`flex items-center gap-3 px-3 py-3 rounded-xl transition-all min-h-[44px] ${
+                pathname === "/admin"
+                  ? "bg-sidebar-primary text-sidebar-primary-foreground"
+                  : "text-sidebar-foreground hover:bg-sidebar-accent/10"
+              }`}
+            >
+              <Shield className="h-5 w-5 flex-shrink-0" />
+              {!isCollapsed && <span className="font-medium text-sm">Administration</span>}
+            </Link>
+          )}
         </nav>
 
         {/* Toggle Button */}

@@ -20,9 +20,15 @@ import {
 import Image from "next/image"
 import Link from "next/link"
 
-export default function MedicalTrackingPage({ params }: { params: { id: string } }) {
+interface MedicalTrackingPageProps {
+  params: Promise<{ id: string }>
+}
+
+export default async function MedicalTrackingPage({ params }: MedicalTrackingPageProps) {
+  const { id } = await params
+  
   const horse = {
-    id: params.id,
+    id,
     name: "Luna",
     image: "/beautiful-brown-horse-portrait.jpg",
   }
