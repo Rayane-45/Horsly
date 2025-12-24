@@ -3,6 +3,7 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: true,
   },
+  output: 'export',
   images: {
     unoptimized: true,
   },
@@ -10,6 +11,8 @@ const nextConfig = {
   experimental: {
     optimizePackageImports: ['recharts'],
   },
+  basePath: '/Horsly',
+  assetPrefix: '/Horsly/',
 }
 
 export default nextConfig
